@@ -49,7 +49,7 @@ class MainActivity : ComponentActivity() {
         cameraManager = CameraManager(this)
         textToSpeechManager = TextToSpeechManager(this) {
             // Speak welcome message when TTS is initialized
-            textToSpeechManager.speak("Welcome to ARound Me. I will help you detect objects around you.")
+            textToSpeechManager.speak("Welcome to ARound Me. Using custom object detection model.", force = true)
         }
 
         // Check permissions
@@ -117,14 +117,18 @@ fun MainScreen(
     LaunchedEffect(previewView) {
         val analyzer = ObjectDetectionAnalyzer(context) { detectedObjects ->
             if (detectedObjects.isNotEmpty()) {
-                // Get the closest object with highest confidence
-                val mostRelevantObject = detectedObjects.maxByOrNull { it.confidence }
-                mostRelevantObject?.let { obj ->
-                    // Only announce if confidence is above 70%
-                    if (obj.confidence >= 0.7f) {
-                        val description = "${obj.label} ${obj.distanceDescription}"
-                        textToSpeechManager.speak(description)
-                    }
+                // Announce EVERY detection immediately for testing
+                val relevant = detectedObjects
+                    .sortedByDescending { it.confidence }
+                    .take(1)  // Just announce the top detection
+
+                if (relevant.isNotEmpty()) {
+                    val obj = relevant[0]
+                    val announcement = "${obj.label} detected ${obj.distanceDescription}"
+
+                    // Log before speaking for easier debug
+                    android.util.Log.d("MainActivity", "🔊 Announcing: $announcement")
+                    textToSpeechManager.speak(announcement)
                 }
             }
         }

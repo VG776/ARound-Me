@@ -60,24 +60,21 @@ class TextToSpeechManager(
     fun speak(text: String, force: Boolean = false) {
         val currentTime = System.currentTimeMillis()
         
-        // Skip if it's the same message and not enough time has passed, unless forced
-        if (!force && text == lastSpokenText && currentTime - lastSpeakTime < minTimeBetweenUtterances) {
-            return
-        }
-
-        // Only speak if initialized and not currently speaking or forced
-        if (isInitialized && (!isSpeaking || force)) {
+        Log.d("TTS", "🔊 speak() called: '$text', force=$force, initialized=$isInitialized, speaking=$isSpeaking")
+        
+        // TESTING MODE: Speak EVERYTHING immediately, no filtering
+        if (isInitialized) {
             val params = HashMap<String, String>().apply {
                 put(TextToSpeech.Engine.KEY_PARAM_VOLUME, "1.0")
                 put(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "ObjectDetection_${System.currentTimeMillis()}")
             }
             
-            Log.d("TTS", "Speaking: $text")
+            Log.d("TTS", "📢 Speaking NOW: $text")
             textToSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, params)
             lastSpokenText = text
             lastSpeakTime = currentTime
         } else {
-            Log.e("TTS", "Cannot speak: initialized=$isInitialized, speaking=$isSpeaking")
+            Log.e("TTS", "❌ Cannot speak - TTS not initialized!")
         }
     }
 

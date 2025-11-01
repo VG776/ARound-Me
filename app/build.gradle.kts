@@ -20,6 +20,11 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+        
+        // Prevent TFLite model compression
+        aaptOptions {
+            noCompress("tflite")
+        }
     }
 
     buildTypes {
@@ -71,6 +76,8 @@ dependencies {
 
     // 🧩 ML Kit (optional lightweight detection)
     implementation("com.google.mlkit:object-detection:17.0.0")
+    // ML Kit custom object detection (local TFLite models)
+    implementation("com.google.mlkit:object-detection-custom:17.0.0")
 
     // --- JETPACK COMPOSE DEPENDENCIES ---
     // Use the Compose Bill of Materials (BoM) to manage Compose versions. [4]
@@ -89,6 +96,9 @@ dependencies {
 
     // Integration with Lifecycle
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.1")
+
+    // If any XML layouts reference ConstraintLayout, include the dependency so inflation succeeds
+    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
 
     // Tooling support for Android Studio Previews
     debugImplementation("androidx.compose.ui:ui-tooling")
