@@ -6,6 +6,8 @@ import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.os.Bundle
 import android.util.Log
+import android.view.View
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.AspectRatio
@@ -33,6 +35,13 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     private var detector: Detector? = null
 
     private lateinit var cameraExecutor: ExecutorService
+    
+    // Accessibility features
+    private lateinit var navigationManager: NavigationManager
+    private var voiceCommandHandler: VoiceCommandHandler? = null
+    private var isNavigationEnabled = true
+    private var isVoiceCommandEnabled = false
+    private var currentBoundingBoxes: List<BoundingBox> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,6 +49,14 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         setContentView(binding.root)
 
         cameraExecutor = Executors.newSingleThreadExecutor()
+
+        // Initialize navigation manager with TTS
+        navigationManager = NavigationManager(this) {
+            runOnUiThread {
+                Toast.makeText(this, "Voice guidance ready", Toast.LENGTH_SHORT).show()
+                navigationManager.speak("Navigation system ready")
+            }
+        }
 
         cameraExecutor.execute {
             detector = Detector(baseContext, MODEL_PATH, LABELS_PATH, this)
@@ -52,10 +69,12 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         }
 
         bindListeners()
+        setupAccessibilityFeatures()
     }
 
     private fun bindListeners() {
         binding.apply {
+            // GPU toggle
             isGpu.setOnCheckedChangeListener { buttonView, isChecked ->
                 cameraExecutor.submit {
                     detector?.restart(isGpu = isChecked)
@@ -66,7 +85,159 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                     buttonView.setBackgroundColor(ContextCompat.getColor(baseContext, R.color.gray))
                 }
             }
+            
+            // Navigation toggle
+            navigationToggle.setOnCheckedChangeListener { _, isChecked ->
+                isNavigationEnabled = isChecked
+                val message = if (isChecked) "Navigation enabled" else "Navigation disabled"
+                navigationManager.speakImmediate(message)
+            }
+            
+            // Voice command toggle
+            voiceCommandToggle.setOnCheckedChangeListener { _, isChecked ->
+                isVoiceCommandEnabled = isChecked
+                handleVoiceCommandToggle(isChecked)
+            }
+            
+            // Manual scan button for accessibility
+            scanButton.setOnClickListener {
+                performManualScan()
+            }
+            
+            // Describe scene button
+            describeButton.setOnClickListener {
+                describeCurrentScene()
+            }
         }
+    }
+    
+    private fun setupAccessibilityFeatures() {
+        // Set content descriptions for accessibility
+        binding.apply {
+            navigationToggle.contentDescription = "Toggle navigation guidance"
+            voiceCommandToggle.contentDescription = "Toggle voice commands"
+            scanButton.contentDescription = "Scan environment"
+            describeButton.contentDescription = "Describe current scene"
+            isGpu.contentDescription = "Toggle GPU acceleration"
+        }
+        
+        // Make the app more accessible
+        binding.root.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+    }
+    
+    private fun handleVoiceCommandToggle(enabled: Boolean) {
+        if (enabled) {
+            // Check for audio permission
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) 
+                != PackageManager.PERMISSION_GRANTED) {
+                requestAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                binding.voiceCommandToggle.isChecked = false
+                return
+            }
+            
+            voiceCommandHandler = VoiceCommandHandler(this) { command ->
+                handleVoiceCommand(command)
+            }
+            voiceCommandHandler?.startListening()
+            navigationManager.speak("Voice commands enabled")
+        } else {
+            voiceCommandHandler?.destroy()
+            voiceCommandHandler = null
+            navigationManager.speak("Voice commands disabled")
+        }
+    }
+    
+    private fun handleVoiceCommand(command: VoiceCommand) {
+        when (command) {
+            VoiceCommand.WHAT_DO_YOU_SEE -> {
+                describeCurrentScene()
+            }
+            VoiceCommand.DESCRIBE_SCENE -> {
+                describeDetailedScene()
+            }
+            VoiceCommand.PAUSE_SPEECH -> {
+                navigationManager.stopSpeaking()
+                isNavigationEnabled = false
+                binding.navigationToggle.isChecked = false
+            }
+            VoiceCommand.RESUME_SPEECH -> {
+                isNavigationEnabled = true
+                binding.navigationToggle.isChecked = true
+                navigationManager.speak("Navigation resumed")
+            }
+            VoiceCommand.HELP -> {
+                provideHelp()
+            }
+            VoiceCommand.SCAN_ENVIRONMENT -> {
+                performManualScan()
+            }
+            VoiceCommand.UNKNOWN -> {
+                // Do nothing
+            }
+        }
+    }
+    
+    private fun performManualScan() {
+        if (currentBoundingBoxes.isEmpty()) {
+            navigationManager.speakImmediate("No objects detected")
+        } else {
+            describeCurrentScene()
+        }
+    }
+    
+    private fun describeCurrentScene() {
+        if (currentBoundingBoxes.isEmpty()) {
+            navigationManager.speakImmediate("No objects detected")
+            return
+        }
+        
+        val objectCounts = currentBoundingBoxes.groupingBy { it.clsName }.eachCount()
+        val description = buildString {
+            append("I can see ")
+            objectCounts.entries.forEachIndexed { index, entry ->
+                if (index > 0) append(", ")
+                append("${entry.value} ${entry.key}")
+                if (entry.value > 1) append("s")
+            }
+        }
+        
+        navigationManager.speakImmediate(description)
+    }
+    
+    private fun describeDetailedScene() {
+        if (currentBoundingBoxes.isEmpty()) {
+            navigationManager.speakImmediate("No objects detected")
+            return
+        }
+        
+        val description = buildString {
+            append("Detailed scan. ")
+            currentBoundingBoxes.take(5).forEach { box ->
+                val position = when {
+                    box.cx < 0.35f -> "left"
+                    box.cx > 0.65f -> "right"
+                    else -> "center"
+                }
+                val distance = when {
+                    box.h > 0.6f -> "very close"
+                    box.h > 0.4f -> "close"
+                    box.h > 0.2f -> "medium distance"
+                    else -> "far"
+                }
+                append("${box.clsName} $distance on $position. ")
+            }
+        }
+        
+        navigationManager.speakImmediate(description)
+    }
+    
+    private fun provideHelp() {
+        val helpMessage = "Say what do you see to describe objects. " +
+                         "Say pause speech to stop navigation. " +
+                         "Say resume to continue. " +
+                         "Say scan to check environment. " +
+                         "Say describe scene for detailed information."
+        navigationManager.speakImmediate(helpMessage)
     }
 
     private fun startCamera() {
@@ -154,11 +325,23 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         ActivityResultContracts.RequestMultiplePermissions()) {
         if (it[Manifest.permission.CAMERA] == true) { startCamera() }
     }
+    
+    private val requestAudioPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()) { isGranted ->
+        if (isGranted) {
+            handleVoiceCommandToggle(true)
+            binding.voiceCommandToggle.isChecked = true
+        } else {
+            Toast.makeText(this, "Audio permission required for voice commands", Toast.LENGTH_LONG).show()
+        }
+    }
 
     override fun onDestroy() {
         super.onDestroy()
         detector?.close()
         cameraExecutor.shutdown()
+        navigationManager.shutdown()
+        voiceCommandHandler?.destroy()
     }
 
     override fun onResume() {
@@ -181,6 +364,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     override fun onEmptyDetect() {
         runOnUiThread {
             binding.overlay.clear()
+            currentBoundingBoxes = emptyList()
         }
     }
 
@@ -191,6 +375,17 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                 setResults(boundingBoxes)
                 invalidate()
             }
+            
+            // Update current detections
+            currentBoundingBoxes = boundingBoxes
+            
+            // Announce navigation guidance if enabled
+            if (isNavigationEnabled) {
+                navigationManager.analyzeAndAnnounce(boundingBoxes)
+            }
+            
+            // Update detection count
+            binding.detectionCount.text = "${boundingBoxes.size} objects"
         }
     }
 }

@@ -2,7 +2,14 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
-    <color name="bounding_box_color">#234567</color>
+    <color name="bounding_box_color">#4CAF50</color>
     <color name="gray">#999</color>
     <color name="orange">#F93</color>
+    
+    <!-- New colors for enhanced UI -->
+    <color name="light_gray">#CCCCCC</color>
+    <color name="control_panel_bg">#CC1E1E1E</color>
+    <color name="primary_button">#2196F3</color>
+    <color name="secondary_button">#FF9800</color>
+    <color name="switch_track">#4CAF50</color>
 </resources>
