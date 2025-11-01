@@ -63,21 +63,31 @@ android {
 dependencies {
     // 🧱 Core Android
     implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("com.google.android.material:material:1.11.0")
 
     // 📷 CameraX
-    implementation("androidx.camera:camera-core:1.3.0")
-    implementation("androidx.camera:camera-camera2:1.3.0")
-    implementation("androidx.camera:camera-lifecycle:1.3.0")
-    implementation("androidx.camera:camera-view:1.3.0")
+    implementation("androidx.camera:camera-core:1.3.1")
+    implementation("androidx.camera:camera-camera2:1.3.1")
+    implementation("androidx.camera:camera-lifecycle:1.3.1")
+    implementation("androidx.camera:camera-view:1.3.1")
 
-    // 🧠 TensorFlow Lite (offline models)
-    implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")
+    // 🧠 TensorFlow Lite (for YOLO and real-time detection)
+    implementation("org.tensorflow:tensorflow-lite:2.14.0")
     implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
+    implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")
+    implementation("org.tensorflow:tensorflow-lite-gpu:2.14.0")
+    implementation("org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.4.4")
 
-    // 🧩 ML Kit (optional lightweight detection)
-    implementation("com.google.mlkit:object-detection:17.0.0")
-    // ML Kit custom object detection (local TFLite models)
-    implementation("com.google.mlkit:object-detection-custom:17.0.0")
+    // 🧩 ML Kit for OCR (text recognition)
+    implementation("com.google.mlkit:text-recognition:16.0.0")
+    
+    // 🎤 Speech Recognition and TTS
+    implementation("com.google.android.gms:play-services-speech:21.0.1")
+
+    // 💡 Coroutines for async processing
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
 
     // --- JETPACK COMPOSE DEPENDENCIES ---
     // Use the Compose Bill of Materials (BoM) to manage Compose versions. [4]
