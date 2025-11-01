@@ -1,183 +1,155 @@
 package com.example.aroundme
 
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.speech.RecognizerIntent
-import android.speech.RecognitionListener
-import android.speech.SpeechRecognizer
-import android.speech.tts.TextToSpeech
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
-import androidx.core.app.ActivityCompat
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import com.example.aroundme.audio.TextToSpeechManager
+import com.example.aroundme.camera.CameraManager
+import com.example.aroundme.detection.ObjectDetectionAnalyzer
 import com.example.aroundme.ui.theme.ARoundMeTheme
-import java.util.*
+import kotlinx.coroutines.launch
 
-class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
+class MainActivity : ComponentActivity() {
+    private lateinit var cameraManager: CameraManager
+    private lateinit var textToSpeechManager: TextToSpeechManager
 
-    private lateinit var tts: TextToSpeech
-    private lateinit var speechRecognizer: SpeechRecognizer
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions.all { it.value }) {
+            startApp()
+        } else {
+            Toast.makeText(
+                this,
+                "Camera and audio permissions are required for this app",
+                Toast.LENGTH_LONG
+            ).show()
+            finish()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
 
-        // Request microphone permission if not granted
-        if (ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.RECORD_AUDIO
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.RECORD_AUDIO),
-                1
-            )
+        // Initialize managers
+        cameraManager = CameraManager(this)
+        textToSpeechManager = TextToSpeechManager(this) {
+            // Speak welcome message when TTS is initialized
+            textToSpeechManager.speak("Welcome to ARound Me. I will help you detect objects around you.")
         }
 
-        // Initialize Text-to-Speech
-        tts = TextToSpeech(this, this)
+        // Check permissions
+        if (hasRequiredPermissions()) {
+            startApp()
+        } else {
+            requestPermissions()
+        }
+    }
 
-        // Initialize Speech Recognizer
-        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
+    private fun hasRequiredPermissions(): Boolean {
+        return REQUIRED_PERMISSIONS.all {
+            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+        }
+    }
 
+    private fun requestPermissions() {
+        requestPermissionLauncher.launch(REQUIRED_PERMISSIONS)
+    }
+
+    private fun startApp() {
         setContent {
             ARoundMeTheme {
-                var recognizedText by remember { mutableStateOf("Say something...") }
-
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    VoiceScreen(
-                        modifier = Modifier.padding(innerPadding),
-                        recognizedText = recognizedText,
-                        onSpeakClick = {
-                            speakOut("Hello! How are you?")
-                        },
-                        onListenClick = {
-                            startListening { result ->
-                                recognizedText = result
-                                speakOut("You said: $result")
-                            }
-                        }
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    MainScreen(
+                        cameraManager = cameraManager,
+                        textToSpeechManager = textToSpeechManager
                     )
                 }
             }
         }
     }
 
-    // ---------- TTS Setup ----------
-    override fun onInit(status: Int) {
-        if (status == TextToSpeech.SUCCESS) {
-            val result = tts.setLanguage(Locale.ENGLISH)
-            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                Toast.makeText(this, "Language not supported", Toast.LENGTH_SHORT).show()
-            } else {
-                speakOut("Welcome to ARoundMe")
-            }
-        }
-    }
-
-    private fun speakOut(text: String) {
-        if (::tts.isInitialized) {
-            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
-        }
-    }
-
-    // ---------- Speech Recognition ----------
-    private fun startListening(onResult: (String) -> Unit) {
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-
-        speechRecognizer.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {
-                Toast.makeText(applicationContext, "Listening...", Toast.LENGTH_SHORT).show()
-            }
-
-            override fun onResults(results: Bundle?) {
-                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                val text = matches?.get(0) ?: "Didn't catch that"
-                onResult(text)
-            }
-
-            override fun onError(error: Int) {
-                Toast.makeText(applicationContext, "Error recognizing speech", Toast.LENGTH_SHORT).show()
-            }
-
-            override fun onBeginningOfSpeech() {}
-            override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() {}
-            override fun onEvent(eventType: Int, params: Bundle?) {}
-            override fun onPartialResults(partialResults: Bundle?) {}
-            override fun onRmsChanged(rmsdB: Float) {}
-        })
-
-        speechRecognizer.startListening(intent)
-    }
-
-    // ---------- Cleanup ----------
     override fun onDestroy() {
         super.onDestroy()
-        if (::tts.isInitialized) {
-            tts.stop()
-            tts.shutdown()
-        }
-        if (this::speechRecognizer.isInitialized) {
-            speechRecognizer.destroy()
-        }
+        cameraManager.stopCamera()
+        textToSpeechManager.shutdown()
+    }
+
+    companion object {
+        private val REQUIRED_PERMISSIONS = arrayOf(
+            Manifest.permission.CAMERA,
+            Manifest.permission.RECORD_AUDIO
+        )
     }
 }
 
 @Composable
-fun VoiceScreen(
-    modifier: Modifier = Modifier,
-    recognizedText: String,
-    onSpeakClick: () -> Unit,
-    onListenClick: () -> Unit
+fun MainScreen(
+    cameraManager: CameraManager,
+    textToSpeechManager: TextToSpeechManager
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = recognizedText,
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.padding(bottom = 32.dp)
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
+    val previewView = remember {
+        PreviewView(context).apply {
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+        }
+    }
+
+    LaunchedEffect(previewView) {
+        val analyzer = ObjectDetectionAnalyzer(context) { detectedObjects ->
+            if (detectedObjects.isNotEmpty()) {
+                // Get the closest object with highest confidence
+                val mostRelevantObject = detectedObjects.maxByOrNull { it.confidence }
+                mostRelevantObject?.let { obj ->
+                    // Only announce if confidence is above 70%
+                    if (obj.confidence >= 0.7f) {
+                        val description = "${obj.label} ${obj.distanceDescription}"
+                        textToSpeechManager.speak(description)
+                    }
+                }
+            }
+        }
+
+        scope.launch {
+            cameraManager.startCamera(
+                lifecycleOwner = lifecycleOwner,
+                previewView = previewView,
+                imageAnalyzer = analyzer
+            )
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        AndroidView(
+            factory = { previewView },
+            modifier = Modifier.fillMaxSize()
         )
 
-        Button(onClick = onSpeakClick, modifier = Modifier.fillMaxWidth()) {
-            Text("🔊 Speak")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(onClick = onListenClick, modifier = Modifier.fillMaxWidth()) {
-            Text("🎙 Listen")
-        }
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun VoiceScreenPreview() {
-    ARoundMeTheme {
-        VoiceScreen(
-            recognizedText = "Preview Mode",
-            onSpeakClick = {},
-            onListenClick = {}
+        // Accessibility hint text
+        Text(
+            text = "Camera view active. Objects will be announced automatically.",
+            modifier = Modifier.padding(16.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface
         )
     }
 }
